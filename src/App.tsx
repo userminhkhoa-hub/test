@@ -652,16 +652,24 @@ export default function App() {
             <div className="w-16 h-16 bg-red-500/20 text-red-500 flex flex-col items-center justify-center rounded-full mx-auto mb-4">
                <Shield className="w-8 h-8" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Tài khoản hết hạn / Chưa kích hoạt</h2>
+            <h2 className="text-2xl font-bold text-white mb-2">Inactive / Expired Account</h2>
             <p className="text-gray-400 mb-6">
-              Tài khoản <b>{user?.username}</b> của bạn không có gói sử dụng nào đang hoạt động.<br/><br/>
-              <b>Vui lòng chụp ảnh màn hình này gửi cho Admin để kích hoạt.</b>
+              Account <b>{user?.username}</b> does not have an active subscription.<br/><br/>
+              <b>Please contact Admin for activation.</b>
             </p>
+            <a 
+              href="https://t.me/Oliviacodebi" 
+              target="_blank" 
+              rel="noreferrer"
+              className="w-full bg-[#229ED9] hover:bg-[#229ED9]/90 text-white font-bold py-3.5 rounded-xl mb-4 flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-500/20"
+            >
+               <Send size={20} /> CONTACT ADMIN (TELEGRAM)
+            </a>
             <button 
                 onClick={() => { localStorage.removeItem('auth_token'); checkAuth(); }}
-                className="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 rounded-lg"
+                className="w-full bg-gray-800 hover:bg-gray-700 text-white font-medium py-3.5 rounded-xl border border-gray-700 transition-all uppercase text-xs font-bold tracking-widest"
             >
-               Đăng xuất
+               Logout
             </button>
          </div>
        </div>
@@ -1042,7 +1050,7 @@ function PageDetailsModal({ page, onClose }: { page: FBPage, onClose: () => void
                <p className="font-medium text-sm animate-pulse">Loading video list for this page...</p>
              </div>
            ) : reels.length === 0 ? (
-             <div className="py-20 text-center text-gray-400 font-medium">Page này chưa có video/reels nào.</div>
+             <div className="py-20 text-center text-gray-400 font-medium">This page has no videos/reels yet.</div>
            ) : (
              <div className="border border-gray-100 rounded-2xl overflow-hidden">
                <table className="w-full text-left text-sm">
@@ -1064,8 +1072,8 @@ function PageDetailsModal({ page, onClose }: { page: FBPage, onClose: () => void
                          <input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => toggleSelect(r.id)} className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300" />
                        </td>
                        <td className="px-4 py-4">
-                         <p className="font-medium text-gray-800 line-clamp-2 leading-tight">{r.description || 'Không có mô tả'}</p>
-                         <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">{r.created_time ? new Date(r.created_time).toLocaleString('vi-VN') : 'N/A'}</p>
+                         <p className="font-medium text-gray-800 line-clamp-2 leading-tight">{r.description || 'No description'}</p>
+                         <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">{r.created_time ? new Date(r.created_time).toLocaleString('en-US') : 'N/A'}</p>
                        </td>
                        <td className="px-4 py-4 text-center">
                           <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-50 text-orange-600 rounded-md text-xs font-bold border border-orange-100/50">
@@ -1109,11 +1117,11 @@ function PageDetailsModal({ page, onClose }: { page: FBPage, onClose: () => void
                  {isCommenting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                  START SPREADING
                </button>
-               <button onClick={() => setShowCommentInput(false)} className="px-4 py-3 bg-white text-gray-500 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-all">Hủy</button>
+               <button onClick={() => setShowCommentInput(false)} className="px-4 py-3 bg-white text-gray-500 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-all">Cancel</button>
              </div>
            ) : (
              <div className="flex justify-between items-center">
-               <span className="text-sm font-medium text-gray-500">Đã chọn: <strong className="text-primary">{selectedIds.length}</strong> video</span>
+               <span className="text-sm font-medium text-gray-500">Selected: <strong className="text-primary">{selectedIds.length}</strong> videos</span>
                <button 
                  onClick={() => setShowCommentInput(true)}
                  disabled={selectedIds.length === 0}
