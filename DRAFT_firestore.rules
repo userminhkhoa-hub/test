@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper for users
+    match /users/{username} {
+      allow read: if true; // Or restrict to self if needed, but login needs to find user
+      allow create: if true; // Registration
+      allow update: if true; // Admin activates via webhook (need to secure this)
+    }
+
+    match /accounts/{accountId} {
+       allow read, write: if true; // Managed by server/API for now
+    }
+
+    match /history/{historyId} {
+       allow read, write: if true;
+    }
+
+    match /settings/{settingId} {
+       allow read, write: if true;
+    }
+  }
+}

@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(mid) {
+      return mid == request.auth.uid || mid == 'default'; // For this app, mid can be username (UID)
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Since the app currently doesn't use Firebase Auth tokens for UID (it uses custom session tokens),
+    // and the backend is the one talking to DB, technically we can allow all access from the backend.
+    // However, for best practice, let's assume if we ever use client SDK.
+    // Given the current architecture, the server handles everything.
+    
+    match /users/{username} {
+      allow read, write: if true; // Managed by server
+    }
+
+    match /accounts/{accountId} {
+       allow read, write: if true;
+    }
+
+    match /history/{historyId} {
+       allow read, write: if true;
+    }
+
+    match /settings/{settingId} {
+       allow read, write: if true;
+    }
+  }
+}

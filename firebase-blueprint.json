@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "AppUser": {
+      "title": "App User",
+      "description": "User account for the tool",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "gmail": { "type": "string" },
+        "phone": { "type": "string" },
+        "expiredAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "chatId": { "type": "string" }
+      },
+      "required": ["username", "password", "gmail", "phone"]
+    },
+    "Account": {
+      "title": "Facebook Account",
+      "description": "Linked Facebook account",
+      "type": "object",
+      "properties": {
+        "machineId": { "type": "string" },
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "picture": { "type": "object" },
+        "access_token": { "type": "string" },
+        "two_factor_secret": { "type": "string" }
+      },
+      "required": ["id", "access_token"]
+    },
+    "History": {
+      "title": "Posting History",
+      "description": "Record of Reels posted",
+      "type": "object",
+      "properties": {
+        "machineId": { "type": "string" },
+        "id": { "type": "string" },
+        "pageId": { "type": "string" },
+        "pageName": { "type": "string" },
+        "accountName": { "type": "string" },
+        "videoName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "status": { "type": "string" },
+        "error": { "type": "string" },
+        "link": { "type": "string" }
+      }
+    },
+    "Settings": {
+      "title": "App Settings",
+      "description": "Global or per-machine settings",
+      "type": "object",
+      "properties": {
+        "machineId": { "type": "string" },
+        "key": { "type": "string" },
+        "proxy": { "type": "object" },
+        "telegram": { "type": "object" },
+        "uploadDelay": { "type": "object" }
+      }
+    }
+  },
+  "firestore": {
+    "users/{username}": {
+      "schema": "AppUser",
+      "description": "Users of the application"
+    },
+    "accounts/{accountId}": {
+      "schema": "Account",
+      "description": "Facebook accounts"
+    },
+    "history/{historyId}": {
+      "schema": "History",
+      "description": "History of posts"
+    },
+    "settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Application settings"
+    }
+  }
+}

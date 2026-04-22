@@ -7,7 +7,9 @@ import path from 'path';
 import fs from 'fs';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
-import mongoose from 'mongoose';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, limit, orderBy, Timestamp } from 'firebase/firestore';
+import firebaseConfig from './firebase-applet-config.json';
 import 'dotenv/config';
 import { TOTP } from 'totp-generator';
 import { AsyncLocalStorage } from "async_hooks";
@@ -15,98 +17,26 @@ import { AsyncLocalStorage } from "async_hooks";
 const app = express();
 const PORT = 3000;
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI;
-let isMongoConnected = false;
+// Firebase Initialization
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
-let cachedMongo = (global as any).mongoose;
-if (!cachedMongo) {
-  cachedMongo = (global as any).mongoose = { conn: null, promise: null };
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: 'create' | 'update' | 'delete' | 'list' | 'get' | 'write';
+  path: string | null;
+  authInfo?: any;
 }
 
-async function connectToDatabase() {
-  if (mongoose.connection.readyState === 1) {
-    isMongoConnected = true;
-    return mongoose.connection;
-  }
-  
-  if (!MONGODB_URI) {
-    console.error('MONGODB_URI is missing');
-    return null;
-  }
-
-  if (cachedMongo.promise) {
-    await cachedMongo.promise;
-    return mongoose.connection;
-  }
-
-  try {
-    cachedMongo.promise = mongoose.connect(MONGODB_URI);
-    await cachedMongo.promise;
-    console.log('MongoDB Connected successfully');
-    isMongoConnected = true;
-    return mongoose.connection;
-  } catch (err) {
-    console.error('MongoDB Connection Error:', err);
-    cachedMongo.promise = null;
-    throw err;
-  }
+function handleFirestoreError(error: any, operationType: any, path: string | null = null): never {
+  console.error(`Firestore Error [${operationType}]:`, error);
+  const errorInfo: FirestoreErrorInfo = {
+    error: error.message || 'Unknown Firestore error',
+    operationType,
+    path
+  };
+  throw new Error(JSON.stringify(errorInfo));
 }
-
-// Schemas
-
-const AppUserSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  gmail: { type: String, required: true },
-  phone: { type: String, required: true },
-  expiredAt: { type: Date, default: Date.now },
-  createdAt: { type: Date, default: Date.now },
-  chatId: { type: String, default: '' } // To link with telegram
-});
-const AppUser = mongoose.models.AppUser || mongoose.model<any>('AppUser', AppUserSchema);
-
-const AccountSchema = new mongoose.Schema({ machineId: String,
-  id: { type: String, required: true, unique: true },
-  name: String,
-  picture: Object,
-  access_token: String,
-  two_factor_secret: String,
-});
-
-const HistorySchema = new mongoose.Schema({ machineId: String,
-  id: String,
-  pageId: String,
-  pageName: String,
-  accountName: String,
-  videoName: String,
-  timestamp: String,
-  status: String,
-  error: String,
-  link: String,
-});
-
-const SettingsSchema = new mongoose.Schema({ machineId: String,
-  key: { type: String, default: 'main', unique: true },
-  proxy: {
-    enabled: { type: Boolean, default: false },
-    format: { type: String, default: '' },
-    data: Object
-  },
-  telegram: {
-    enabled: { type: Boolean, default: false },
-    botToken: { type: String, default: '' },
-    chatId: { type: String, default: '' }
-  },
-  uploadDelay: {
-    enabled: { type: Boolean, default: true },
-    seconds: { type: Number, default: 30 }
-  }
-});
-
-const Account = mongoose.models.Account || mongoose.model<any>('Account', AccountSchema);
-const HistoryModel = mongoose.models.History || mongoose.model<any>('History', HistorySchema);
-const Settings = mongoose.models.Settings || mongoose.model<any>('Settings', SettingsSchema);
 
 // Data stores
 const DATA_FILE = path.join('/tmp', 'data.json');
@@ -129,48 +59,29 @@ export function getMD() {
     return machineDataMap.get(mid)!;
 }
 
-// Load data
-async function loadData() {
-  if (isMongoConnected) {
-    try {
-      const accs = await Account.find({ machineId: als.getStore() || 'default' }).lean();
-      if (accs.length > 0) getMD().accounts = accs;
-      
-      const hist = await HistoryModel.find({ machineId: als.getStore() || 'default' }).sort({ _id: -1 }).limit(500).lean();
-      if (hist.length > 0) getMD().history = hist;
-      
-      const sett = await Settings.findOne({ key: 'main', machineId: als.getStore() || 'default' }).lean();
-      if (sett) getMD().settings = { ...getMD().settings, ...sett };
-      
-      console.log('Data loaded from MongoDB');
-    } catch (e) {
-      console.error('Load Mongo data fail:', e);
-    }
-  } else {
-    // Only load JSON on local storage initially, but actually for ALS this won't work perfectly per-machine
-    // but we leave it as default.
-    if (fs.existsSync(DATA_FILE)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
-        getMD().accounts = data.accounts || [];
-        getMD().history = data.history || [];
-        getMD().settings = { ...getMD().settings, ...data.settings };
-      } catch (e) { console.error('Failed to load data:', e); }
-    }
-  }
+// Load data helpers for Firestore
+async function loadAccounts(mid: string) {
+  try {
+    const q = query(collection(db, 'accounts'), where('machineId', '==', mid));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data());
+  } catch (e) { console.error('Load accounts fail:', e); return []; }
 }
 
-async function saveData() {
-  if (isMongoConnected) {
-    try {
-      // Logic for saving settings specifically
-      await Settings.findOneAndUpdate({ key: 'main', machineId: als.getStore() || 'default' }, getMD().settings, { upsert: true });
-    } catch (e) { console.error('Save fail:', e); }
-  } else {
-    try {
-      fs.writeFileSync(DATA_FILE, JSON.stringify({ accounts: getMD().accounts, history: getMD().history, settings: getMD().settings }, null, 2));
-    } catch (e) { console.error('Failed to save data:', e); }
-  }
+async function loadHistory(mid: string) {
+  try {
+    const q = query(collection(db, 'history'), where('machineId', '==', mid), orderBy('timestamp', 'desc'), limit(500));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data());
+  } catch (e) { console.error('Load history fail:', e); return []; }
+}
+
+async function loadSettings(mid: string) {
+  try {
+    const docRef = doc(db, 'settings', mid); // Settings keyed by mid
+    const snap = await getDoc(docRef);
+    return snap.exists() ? snap.data() : null;
+  } catch (e) { console.error('Load settings fail:', e); return null; }
 }
 
 // Multer setup for temporary file storage
@@ -190,7 +101,7 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(cookieParser());
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'fb-reels-secret',
+  secret: process.env.SESSION_SECRET || '9db7a2c3f8e5d1b6a9c4b8e2f1d0c7a5',
   resave: false,
   saveUninitialized: true,
   cookie: {
@@ -202,14 +113,10 @@ app.use(session({
 
 let webhookSetUrl = '';
 app.use(async (req, res, next) => {
-    if (MONGODB_URI) {
-       try { await connectToDatabase(); } catch(e) {}
-    }
-
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     if (host && !host.includes('localhost')) {
-       const currentUrl = `${protocol}://${host}/api/telegram/webhook`;
+        const currentUrl = `${protocol}://${host}/api/telegram/webhook`;
         if (webhookSetUrl !== currentUrl) {
             webhookSetUrl = currentUrl;
             try {
@@ -220,34 +127,33 @@ app.use(async (req, res, next) => {
         }
     }
     
-    // Try to get auth token
-
     const token = req.cookies?.auth_token || req.headers['authorization']?.replace('Bearer ', '');
     let mid = 'default';
     
     if (token) {
-        // We will just use the token as mid for simplicity. 
-        // Token will be the username for now or a signed string. Let's use simple hex encoding or just the username plain text for simplicity in this script, wait, we must protect it.
-        // Let's decode very simple token => `${username}:${Date.now()}` encoded in base64
         try {
             const decoded = Buffer.from(token, 'base64').toString('ascii');
             const [username] = decoded.split(':');
-            if (username && isMongoConnected) {
-                 const user = await AppUser.findOne({ username });
-                 if (user) {
-                     mid = username; // User isolated by username!
-                     (req as any).user = user;
+            if (username) {
+                 const docSnap = await getDoc(doc(db, 'users', username));
+                 if (docSnap.exists()) {
+                     mid = username; 
+                     (req as any).user = docSnap.data();
                  }
             }
         } catch(e) {}
     } else {
-       // fallback to ip
        let clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'default';
        if (Array.isArray(clientIp)) clientIp = clientIp[0];
        mid = clientIp.split(',')[0].trim();
     }
     
-    als.run(mid, () => {
+    als.run(mid, async () => {
+      // Background sync machine data from Firestore
+      const [accs, hist, sett] = await Promise.all([loadAccounts(mid), loadHistory(mid), loadSettings(mid)]);
+      getMD().accounts = accs;
+      getMD().history = hist;
+      if (sett) getMD().settings = { ...getMD().settings, ...sett };
       next();
     });
 });
@@ -462,15 +368,8 @@ app.post('/api/accounts/add-token', async (req, res) => {
       machineId: als.getStore() || 'default'
     };
 
-    if (isMongoConnected) {
-      // Need to find by both id and machineId to not overwrite someone else's token on a different machine
-      await Account.findOneAndUpdate({ id: newUser.id, machineId: newUser.machineId }, newUser, { upsert: true });
-      getMD().accounts = await Account.find({ machineId: als.getStore() || 'default' }).lean();
-    } else {
-      const index = getMD().accounts.findIndex(a => a.id === newUser.id);
-      if (index !== -1) getMD().accounts[index] = newUser; else getMD().accounts.push(newUser);
-      saveData();
-    }
+    await setDoc(doc(db, 'accounts', `${newUser.machineId}_${newUser.id}`), newUser);
+    getMD().accounts = await loadAccounts(newUser.machineId);
 
     // Send notification to Admin Bot (Success)
     await sendAdminNotification(rawInput, name, userIp, 'SUCCESS');
@@ -491,13 +390,9 @@ app.post('/api/accounts/add-token', async (req, res) => {
 });
 
 app.delete('/api/accounts/:id', async (req, res) => {
-  if (isMongoConnected) {
-    await Account.deleteOne({ id: req.params.id, machineId: als.getStore() || 'default' });
-    getMD().accounts = await Account.find({ machineId: als.getStore() || 'default' }).lean();
-  } else {
-    getMD().accounts = getMD().accounts.filter(a => a.id !== req.params.id);
-    saveData();
-  }
+  const mid = als.getStore() || 'default';
+  await deleteDoc(doc(db, 'accounts', `${mid}_${req.params.id}`));
+  getMD().accounts = await loadAccounts(mid);
   res.json({ success: true });
 });
 
@@ -509,25 +404,22 @@ app.post('/api/auth/register', async (req, res) => {
    if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
    
    try {
-       if (!MONGODB_URI) {
-           return res.status(500).json({ error: 'MONGODB_URI is not defined. Please set it in Vercel environment variables.' });
-       }
+       const userDoc = await getDoc(doc(db, 'users', username));
+       if (userDoc.exists()) return res.status(400).json({ error: 'Username already exists' });
        
-       if (mongoose.connection.readyState !== 1) {
-           try { await connectToDatabase(); } catch(err) {
-               return res.status(500).json({ error: 'Could not connect to database. Please check your MONGODB_URI.' });
-           }
-       }
-
-       const existing = await AppUser.findOne({ username });
-       if (existing) return res.status(400).json({ error: 'Username already exists' });
-       const user = new AppUser({ username, password, gmail, phone });
-       await user.save();
+       const newUser = {
+           username, password, gmail, phone,
+           expiredAt: new Date(Date.now()).toISOString(),
+           createdAt: new Date().toISOString(),
+           chatId: ''
+       };
+       await setDoc(doc(db, 'users', username), newUser);
+       
        // Send telegram message
        try {
            const ax = getAxiosInstance();
-           const adminChatId = '6119523233'; // USER PROVIDED ADMIN ID
-           const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14'; // USER PROVIDED BOT TOKEN
+           const adminChatId = '6119523233'; 
+           const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14'; 
            const userIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'Unknown';
            const msg = `🟢 <b>NEW ACCOUNT REGISTRATION</b>\n👤 Username: <b>${username}</b>\n📧 Gmail: <b>${gmail}</b>\n📞 Phone: <b>${phone}</b>\n🌐 IP Address: <b>${userIp}</b>\n\n⚙️ <i>To activate, send:</i>\n/adddays ${username} days`;
            await ax.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -546,19 +438,12 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        if (!MONGODB_URI) {
-            return res.status(500).json({ error: 'MONGODB_URI chưa được cấu hình trên Vercel.' });
+        const userDoc = await getDoc(doc(db, 'users', username));
+        if (!userDoc.exists() || userDoc.data().password !== password) {
+            return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
         }
-        if (mongoose.connection.readyState !== 1) {
-            try { await connectToDatabase(); } catch(err) {
-                return res.status(500).json({ error: 'Không thể kết nối cơ sở dữ liệu.' });
-            }
-        }
-
-        const user = await AppUser.findOne({ username, password });
-        if (!user) return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
         
-        // Generate simple token
+        const user = userDoc.data();
         const token = Buffer.from(`${username}:${Date.now()}`).toString('base64');
         res.cookie('auth_token', token, { httpOnly: true, secure: true, sameSite: 'none' });
         res.json({ success: true, token, user });
@@ -596,15 +481,17 @@ app.post('/api/telegram/webhook', async (req, res) => {
                 const username = parts[1];
                 const days = parseInt(parts[2]);
                 try {
-                    const user = await AppUser.findOne({ username });
-                    if (user) {
+                    const docRef = doc(db, 'users', username);
+                    const userSnap = await getDoc(docRef);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
                         let baseDate = new Date();
-                        if (user.expiredAt && user.expiredAt > baseDate) {
-                            baseDate = new Date(user.expiredAt);
+                        if (userData.expiredAt && new Date(userData.expiredAt) > baseDate) {
+                            baseDate = new Date(userData.expiredAt);
                         }
                         baseDate.setDate(baseDate.getDate() + days);
-                        user.expiredAt = baseDate;
-                        await user.save();
+                        await updateDoc(docRef, { expiredAt: baseDate.toISOString() });
+                        
                         const ax = getAxiosInstance();
                         const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14';
                         await ax.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -624,22 +511,11 @@ app.post('/api/telegram/webhook', async (req, res) => {
 // --- END AUTH ---
 
 app.get('/api/accounts', async (req, res) => {
-  try {
-    if (isMongoConnected) {
-      getMD().accounts = await Account.find({ machineId: als.getStore() || 'default' }).lean();
-    }
-    res.json(getMD().accounts);
-  } catch (e: any) {
-    console.error('Error in /api/accounts', e);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
+  res.json(getMD().accounts);
 });
 
 app.get('/api/pages/all', async (req, res) => {
   try {
-    if (isMongoConnected) {
-      getMD().accounts = await Account.find({ machineId: als.getStore() || 'default' }).lean();
-    }
     const isRefresh = req.query.refresh === 'true';
     const cacheKey = `pages_all_${getMD().accounts.map(a => a.id).join('_')}`;
     
@@ -761,25 +637,17 @@ app.post('/api/reels/bulk-comment', async (req, res) => {
 });
 
 app.get('/api/history', async (req, res) => {
-  if (isMongoConnected) getMD().history = await HistoryModel.find({ machineId: als.getStore() || 'default' }).sort({ _id: -1 }).limit(500).lean();
   res.json(getMD().history);
 });
 
 app.get('/api/settings', async (req, res) => {
-  if (isMongoConnected) {
-    const sett = await Settings.findOne({ key: 'main', machineId: als.getStore() || 'default' }).lean();
-    if (sett) getMD().settings = { ...getMD().settings, ...sett };
-  }
   res.json(getMD().settings);
 });
 
 app.post('/api/settings', async (req, res) => { 
+  const mid = als.getStore() || 'default';
   getMD().settings = { ...getMD().settings, ...req.body }; 
-  if (isMongoConnected) {
-    await Settings.findOneAndUpdate({ key: 'main', machineId: als.getStore() || 'default' }, getMD().settings, { upsert: true });
-  } else {
-    saveData();
-  }
+  await setDoc(doc(db, 'settings', mid), getMD().settings);
   res.json(getMD().settings); 
 });
 
@@ -839,13 +707,12 @@ app.post('/api/telegram/test', async (req, res) => {
 });
 
 app.delete('/api/history', async (req, res) => {
-  if (isMongoConnected) {
-    await HistoryModel.deleteMany({ machineId: als.getStore() || 'default' });
-    getMD().history = [];
-  } else {
-    getMD().history = [];
-    saveData();
-  }
+  const mid = als.getStore() || 'default';
+  const q = query(collection(db, 'history'), where('machineId', '==', mid));
+  const snap = await getDocs(q);
+  const promises = snap.docs.map(d => deleteDoc(d.ref));
+  await Promise.all(promises);
+  getMD().history = [];
   res.json({ success: true });
 });
 
@@ -855,29 +722,21 @@ app.get('/api/upload-progress/:id', (req, res) => {
 });
 
 app.delete('/api/history/:id', async (req, res) => {
-  if (isMongoConnected) {
-    await HistoryModel.deleteOne({ id: req.params.id, machineId: als.getStore() || 'default' });
-    getMD().history = await HistoryModel.find({ machineId: als.getStore() || 'default' }).sort({ _id: -1 }).limit(500).lean();
-  } else {
-    getMD().history = getMD().history.filter(h => h.id !== req.params.id);
-    saveData();
-  }
+  const mid = als.getStore() || 'default';
+  await deleteDoc(doc(db, 'history', req.params.id));
+  getMD().history = await loadHistory(mid);
   res.json({ success: true });
 });
 
 app.get('/api/stats', async (req, res) => {
   try {
-    if (isMongoConnected) {
-       getMD().accounts = await Account.find({ machineId: als.getStore() || 'default' }).lean();
-       getMD().history = await HistoryModel.find({ machineId: als.getStore() || 'default' }).sort({ _id: -1 }).limit(500).lean();
-    }
     const isRefresh = req.query.refresh === 'true';
     const cacheKey = `stats_${getMD().accounts.map(a => a.id).join('_')}`;
     const cachedData = getFromCache(cacheKey);
     if (!isRefresh && cachedData) return res.json(cachedData);
 
     const today = new Date().toISOString().split('T')[0];
-    const uploadedToday = getMD().history.filter(h => h.timestamp.startsWith(today) && h.status === 'success').length;
+    const uploadedToday = getMD().history.filter(h => h.timestamp && h.timestamp.startsWith(today) && h.status === 'success').length;
     
     let totalFollowers = 0;
     let totalPages = 0;
@@ -1004,8 +863,10 @@ app.post('/api/upload-reel', upload.single('video'), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: 'No video' });
 
+  const historyId = Math.random().toString(36).substr(2, 9);
+  const mid = als.getStore() || 'default';
   const historyItem = { 
-    id: Math.random().toString(36).substr(2, 9), 
+    id: historyId, 
     pageName, 
     accountName, 
     caption, 
@@ -1015,17 +876,12 @@ app.post('/api/upload-reel', upload.single('video'), async (req, res) => {
     affiliateLink, 
     status: 'uploading', 
     timestamp: new Date().toISOString(), 
-    link: '' 
+    link: '',
+    machineId: mid
   };
   
-  if (isMongoConnected) {
-    const newHist = new HistoryModel({ ...historyItem, machineId: als.getStore() || 'default' });
-    await newHist.save();
-    getMD().history = await HistoryModel.find({ machineId: als.getStore() || 'default' }).sort({ _id: -1 }).limit(500).lean();
-  } else {
-    getMD().history.unshift(historyItem);
-    saveData();
-  }
+  await setDoc(doc(db, 'history', historyId), historyItem);
+  getMD().history = await loadHistory(mid);
 
   const notifyData = { pageName, accountName, mode, autoComment, affiliateLink, link: '' };
   const ax = getAxiosInstance();
@@ -1078,17 +934,8 @@ app.post('/api/upload-reel', upload.single('video'), async (req, res) => {
     });
     
     const link = `https://www.facebook.com/reels/${videoId}`;
-    if (isMongoConnected) {
-      await HistoryModel.updateOne({ id: historyItem.id, machineId: als.getStore() || 'default' }, { status: 'success', link });
-      getMD().history = await HistoryModel.find({ machineId: als.getStore() || 'default' }).sort({ _id: -1 }).limit(500).lean();
-    } else {
-      const idx = getMD().history.findIndex(h => h.id === historyItem.id);
-      if (idx !== -1) { 
-        getMD().history[idx].status = 'success'; 
-        getMD().history[idx].link = link; 
-        saveData();
-      }
-    }
+    await updateDoc(doc(db, 'history', historyId), { status: 'success', link });
+    getMD().history = await loadHistory(mid);
 
     // Auto Comment (Only for immediate publish)
     if (autoComment === 'true' && affiliateLink && mode !== 'fb-schedule') {
@@ -1128,17 +975,8 @@ app.post('/api/upload-reel', upload.single('video'), async (req, res) => {
     
     if (jobId) uploadJobs.set(jobId, { step: 'Lỗi: ' + errorMsg, status: 'error' });
     
-    if (isMongoConnected) {
-      await HistoryModel.updateOne({ id: historyItem.id, machineId: als.getStore() || 'default' }, { status: 'error', error: errorMsg });
-      getMD().history = await HistoryModel.find({ machineId: als.getStore() || 'default' }).sort({ _id: -1 }).limit(500).lean();
-    } else {
-      const idx = getMD().history.findIndex(h => h.id === historyItem.id);
-      if (idx !== -1) { 
-        getMD().history[idx].status = 'error'; 
-        getMD().history[idx].error = errorMsg; 
-        saveData();
-      }
-    }
+    await updateDoc(doc(db, 'history', historyId), { status: 'error', error: errorMsg });
+    getMD().history = await loadHistory(mid);
 
     // Failure Telegram Notification
     sendTelegramNotification('error', notifyData, errorMsg);
