@@ -32,7 +32,13 @@ import {
   ThumbsUp,
   MessageCircle,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Mail,
+  Phone,
+  User,
+  Lock,
+  ArrowRight,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -483,102 +489,158 @@ export default function App() {
 
   if (authStatus === 'login' || authStatus === 'register') {
      return (
-       <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4">
-         <div className="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
-           <div className="flex justify-center mb-6">
-             <div className="w-16 h-16 bg-blue-600/20 text-blue-500 flex items-center justify-center rounded-2xl shadow-inner shadow-blue-500/20">
-               <ShieldCheck className="w-8 h-8" />
-             </div>
-           </div>
-           <h1 className="text-2xl font-bold text-white text-center mb-2">Auto Reels Media</h1>
-           <p className="text-gray-400 text-center mb-8">
-             {authStatus === 'login' ? 'Sign in to your account' : 'Create a new account'}
-           </p>
+       <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-4 relative overflow-hidden">
+         {/* Background Ornaments */}
+         <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]" />
+           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 rounded-full blur-[120px]" />
+         </div>
 
-           <form onSubmit={authStatus === 'login' ? handleLogin : handleRegister} className="space-y-4">
-             <div>
-               <label className="text-sm text-gray-400 mb-1 block">Username</label>
-               <input
-                 type="text"
-                 required
-                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                 placeholder="yourusername"
-                 value={authForm.username}
-                 onChange={e => setAuthForm({...authForm, username: e.target.value})}
-               />
+         <motion.div 
+           initial={{ opacity: 0, y: 20 }}
+           animate={{ opacity: 1, y: 0 }}
+           className="bg-white/5 backdrop-blur-xl p-8 md:p-12 rounded-[32px] shadow-2xl w-full max-w-[480px] border border-white/10 relative z-10"
+         >
+           <div className="flex flex-col items-center mb-10">
+             <motion.div 
+               whileHover={{ rotate: 10, scale: 1.1 }}
+               className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center rounded-[24px] shadow-lg shadow-blue-500/20 mb-6"
+             >
+               <ShieldCheck className="w-10 h-10" />
+             </motion.div>
+             <h1 className="text-3xl font-black text-white text-center tracking-tight mb-2">MediaBase Pro</h1>
+             <p className="text-gray-400 text-center font-medium text-sm">
+               {authStatus === 'login' ? 'Welcome back! Please enter your details.' : 'Start your professional reels journey here.'}
+             </p>
+           </div>
+
+           <form onSubmit={authStatus === 'login' ? handleLogin : handleRegister} className="space-y-5">
+             <div className="space-y-2">
+               <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1">Username</label>
+               <div className="relative group">
+                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={18} />
+                 <input
+                   type="text"
+                   required
+                   className="w-full bg-black/20 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-white focus:outline-none focus:border-blue-500/50 focus:bg-white/5 transition-all placeholder:text-gray-600 text-sm"
+                   placeholder="Enter your username"
+                   value={authForm.username}
+                   onChange={e => setAuthForm({...authForm, username: e.target.value})}
+                 />
+               </div>
              </div>
+
+             <AnimatePresence>
              {authStatus === 'register' && (
-                <>
-                <div>
-                  <label className="text-sm text-gray-400 mb-1 block">Gmail</label>
-                  <input
-                    type="email"
-                    required
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                    placeholder="email@example.com"
-                    value={authForm.gmail || ''}
-                    onChange={e => setAuthForm({...authForm, gmail: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-400 mb-1 block">Phone Number</label>
-                  <input
-                    type="tel"
-                    required
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                    placeholder="090..."
-                    value={authForm.phone || ''}
-                    onChange={e => setAuthForm({...authForm, phone: e.target.value})}
-                  />
-                </div>
-                </>
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-5 overflow-hidden"
+                >
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1">Gmail Address</label>
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={18} />
+                      <input
+                        type="email"
+                        required
+                        className="w-full bg-black/20 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-white focus:outline-none focus:border-blue-500/50 focus:bg-white/5 transition-all placeholder:text-gray-600 text-sm"
+                        placeholder="name@email.com"
+                        value={authForm.gmail || ''}
+                        onChange={e => setAuthForm({...authForm, gmail: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1">Phone Number</label>
+                    <div className="relative group">
+                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={18} />
+                      <input
+                        type="tel"
+                        required
+                        className="w-full bg-black/20 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-white focus:outline-none focus:border-blue-500/50 focus:bg-white/5 transition-all placeholder:text-gray-600 text-sm"
+                        placeholder="+84..."
+                        value={authForm.phone || ''}
+                        onChange={e => setAuthForm({...authForm, phone: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
              )}
-             <div>
-               <label className="text-sm text-gray-400 mb-1 block">Password</label>
-               <input
-                 type="password"
-                 required
-                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                 placeholder="••••••••"
-                 value={authForm.password}
-                 onChange={e => setAuthForm({...authForm, password: e.target.value})}
-               />
+             </AnimatePresence>
+
+             <div className="space-y-2">
+               <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1">Password</label>
+               <div className="relative group">
+                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={18} />
+                 <input
+                   type="password"
+                   required
+                   className="w-full bg-black/20 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-white focus:outline-none focus:border-blue-500/50 focus:bg-white/5 transition-all placeholder:text-gray-600 text-sm"
+                   placeholder="••••••••"
+                   value={authForm.password}
+                   onChange={e => setAuthForm({...authForm, password: e.target.value})}
+                 />
+               </div>
              </div>
+
+             <AnimatePresence>
              {authStatus === 'register' && (
-                <div>
-                  <label className="text-sm text-gray-400 mb-1 block">Confirm Password</label>
-                  <input
-                    type="password"
-                    required
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500"
-                    placeholder="••••••••"
-                    value={authForm.confirmPassword || ''}
-                    onChange={e => setAuthForm({...authForm, confirmPassword: e.target.value})}
-                  />
-                </div>
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-2 overflow-hidden"
+                >
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest ml-1">Confirm Password</label>
+                  <div className="relative group">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={18} />
+                    <input
+                      type="password"
+                      required
+                      className="w-full bg-black/20 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-white focus:outline-none focus:border-blue-500/50 focus:bg-white/5 transition-all placeholder:text-gray-600 text-sm"
+                      placeholder="••••••••"
+                      value={authForm.confirmPassword || ''}
+                      onChange={e => setAuthForm({...authForm, confirmPassword: e.target.value})}
+                    />
+                  </div>
+                </motion.div>
              )}
+             </AnimatePresence>
 
              {authError && (
-               <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex items-start gap-2 text-red-500 text-sm">
-                 <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
+               <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className={`${authError.includes('successful') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'} border p-4 rounded-2xl flex items-start gap-3 text-sm font-medium`}
+               >
+                 <Info className="w-5 h-5 flex-shrink-0" />
                  <p>{authError}</p>
-               </div>
+               </motion.div>
              )}
 
-             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors">
+             <button 
+              type="submit" 
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 group active:scale-[0.98]"
+             >
                {authStatus === 'login' ? 'Sign In' : 'Create Account'}
+               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
              </button>
            </form>
 
-           <div className="mt-6 text-center">
+           <div className="mt-8 flex flex-col items-center gap-4">
              <button 
-               onClick={() => { setAuthStatus(authStatus === 'login' ? 'register' : 'login'); setAuthError(''); setAuthForm({username: '', password: ''}) }}
-               className="text-sm text-blue-400 hover:text-blue-300"
+               onClick={() => { setAuthStatus(authStatus === 'login' ? 'register' : 'login'); setAuthError(''); setAuthForm({username: '', password: '', gmail: '', phone: '', confirmPassword: ''}) }}
+               className="text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors"
              >
-               {authStatus === 'login' ? 'Don\'t have an account? Sign up' : 'Already have an account? Sign in'}
+               {authStatus === 'login' ? "Don't have an account? Join now" : "Already have an account? Sign in"}
              </button>
+             
+             <div className="h-px w-12 bg-white/10" />
+             <p className="text-[10px] uppercase font-black tracking-widest text-gray-500">Professional Media Access Manager</p>
            </div>
-         </div>
+         </motion.div>
        </div>
      );
   }

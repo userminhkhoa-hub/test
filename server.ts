@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
@@ -9,17 +10,40 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
 
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, limit, orderBy, Timestamp } from 'firebase/firestore';
-import firebaseConfig from './firebase-applet-config.json';
-import 'dotenv/config';
 import { TOTP } from 'totp-generator';
 import { AsyncLocalStorage } from "async_hooks";
+
+// Load Firebase Config safely
+const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+let firebaseConfig: any;
+try {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+} catch (e) {
+    console.error('FAILED TO LOAD FIREBASE CONFIG:', e);
+}
 
 const app = express();
 const PORT = 3000;
 
 // Firebase Initialization
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+let db: any;
+function initFirebase() {
+    if (db) return db;
+    try {
+        console.log('Initializing Firebase...');
+        if (!firebaseConfig) throw new Error('Firebase config missing');
+        const firebaseApp = initializeApp(firebaseConfig);
+        db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+        console.log('Firebase initialized successfully');
+        return db;
+    } catch (error: any) {
+        console.error('CRITICAL: Firebase Initialization failed!', error.message);
+        return null;
+    }
+}
+
+// Initial call
+initFirebase();
 
 interface FirestoreErrorInfo {
   error: string;
@@ -104,15 +128,20 @@ app.use(session({
   secret: process.env.SESSION_SECRET || '9db7a2c3f8e5d1b6a9c4b8e2f1d0c7a5',
   resave: false,
   saveUninitialized: true,
+  proxy: true, // Required for secure cookies behind reverse proxies like Vercel
   cookie: {
     secure: true,
     sameSite: 'none',
     httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
 
 let webhookSetUrl = '';
 app.use(async (req, res, next) => {
+    // Ensure Firebase is initialized
+    if (!db) initFirebase();
+    
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     if (host && !host.includes('localhost')) {
@@ -129,16 +158,18 @@ app.use(async (req, res, next) => {
     
     const token = req.cookies?.auth_token || req.headers['authorization']?.replace('Bearer ', '');
     let mid = 'default';
+    let user = null;
     
     if (token) {
         try {
             const decoded = Buffer.from(token, 'base64').toString('ascii');
             const [username] = decoded.split(':');
-            if (username) {
+            if (username && db) {
                  const docSnap = await getDoc(doc(db, 'users', username));
                  if (docSnap.exists()) {
                      mid = username; 
-                     (req as any).user = docSnap.data();
+                     user = docSnap.data();
+                     (req as any).user = user;
                  }
             }
         } catch(e) {}
@@ -149,11 +180,18 @@ app.use(async (req, res, next) => {
     }
     
     als.run(mid, async () => {
-      // Background sync machine data from Firestore
-      const [accs, hist, sett] = await Promise.all([loadAccounts(mid), loadHistory(mid), loadSettings(mid)]);
-      getMD().accounts = accs;
-      getMD().history = hist;
-      if (sett) getMD().settings = { ...getMD().settings, ...sett };
+      // Optimization: Only load data on the first request for this mid in this lambda execution life
+      // or lazy load in the routes. For now, we still load but with more safety.
+      if (db) {
+          try {
+              const [accs, hist, sett] = await Promise.all([loadAccounts(mid), loadHistory(mid), loadSettings(mid)]);
+              getMD().accounts = accs;
+              getMD().history = hist;
+              if (sett) getMD().settings = { ...getMD().settings, ...sett };
+          } catch (e) {
+              console.error('Middleware data load failed:', e);
+          }
+      }
       next();
     });
 });
@@ -400,9 +438,15 @@ app.delete('/api/accounts/:id', async (req, res) => {
 // --- AUTH & TELEGRAM ---
 app.post('/api/auth/register', async (req, res) => {
    const { username, password, confirmPassword, gmail, phone } = req.body;
+   console.log('Register attempt for:', username);
+   
    if (!username || !password || !confirmPassword || !gmail || !phone) return res.status(400).json({ error: 'All fields are required' });
    if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
    
+   if (!db) {
+     return res.status(500).json({ error: 'Database not initialized. Please check Vercel Logs for Firebase errors.' });
+   }
+
    try {
        const userDoc = await getDoc(doc(db, 'users', username));
        if (userDoc.exists()) return res.status(400).json({ error: 'Username already exists' });
@@ -413,11 +457,13 @@ app.post('/api/auth/register', async (req, res) => {
            createdAt: new Date().toISOString(),
            chatId: ''
        };
+       console.log('Creating user in Firestore...');
        await setDoc(doc(db, 'users', username), newUser);
+       console.log('User created successfully');
        
        // Send telegram message
        try {
-           const ax = getAxiosInstance();
+           const ax = axios.create({ timeout: 5000 });
            const adminChatId = '6119523233'; 
            const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14'; 
            const userIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'Unknown';
@@ -427,16 +473,20 @@ app.post('/api/auth/register', async (req, res) => {
                text: msg,
                parse_mode: 'HTML'
            }).catch(err => console.error('Telegram notification error (non-fatal):', err.message));
-       } catch(e) { console.error('tele err'); }
+       } catch(e) { console.error('Tele notification fail'); }
+       
        res.json({ success: true });
    } catch(e: any) { 
-       console.error('Registration error:', e);
-       res.status(500).json({ error: 'Server error: ' + e.message }); 
+       console.error('!!! REGISTRATION FATAL ERROR !!!:', e);
+       res.status(500).json({ error: 'Firestore registration failed: ' + (e.message || 'Unknown error') }); 
    }
 });
 
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
+    if (!db) {
+      return res.status(500).json({ error: 'Database not initialized.' });
+    }
     try {
         const userDoc = await getDoc(doc(db, 'users', username));
         if (!userDoc.exists() || userDoc.data().password !== password) {
