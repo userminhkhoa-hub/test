@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #FF3E6C;
+  --color-secondary: #7000FF;
+  --color-accent: #FFD600;
+  --color-fb-bg: #F0F2F5;
+  --color-fb-text: #1C1E21;
+  
+  --font-sans: "Inter", "Segoe UI", Tahoma, sans-serif;
+  
+  --radius-xl: 12px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-full: 30px;
+}
+
+body {
+  background-color: var(--color-fb-bg);
+  color: var(--color-fb-text);
+}
