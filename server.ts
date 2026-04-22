@@ -7,6 +7,7 @@ import axios from 'axios';
 import path from 'path';
 import fs from 'fs';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import { fileURLToPath } from 'url';
 
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, limit, orderBy, Timestamp } from 'firebase/firestore';
@@ -14,12 +15,32 @@ import { TOTP } from 'totp-generator';
 import { AsyncLocalStorage } from "async_hooks";
 
 // Load Firebase Config safely
-const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
 let firebaseConfig: any;
 try {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-} catch (e) {
-    console.error('FAILED TO LOAD FIREBASE CONFIG:', e);
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    // Try multiple possible locations for the config file on Vercel/Local
+    const possiblePaths = [
+        path.join(process.cwd(), 'firebase-applet-config.json'),
+        path.join(__dirname, 'firebase-applet-config.json'),
+        path.join(__dirname, '..', 'firebase-applet-config.json')
+    ];
+    
+    let configFound = false;
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            firebaseConfig = JSON.parse(fs.readFileSync(p, 'utf8'));
+            console.log('Loaded Firebase config from:', p);
+            configFound = true;
+            break;
+        }
+    }
+    
+    if (!configFound) {
+        console.error('CRITICAL: firebase-applet-config.json NOT FOUND in any path');
+    }
+} catch (e: any) {
+    console.error('FAILED TO LOAD FIREBASE CONFIG:', e.message);
 }
 
 const app = express();

@@ -508,9 +508,9 @@ export default function App() {
              >
                <ShieldCheck className="w-10 h-10" />
              </motion.div>
-             <h1 className="text-3xl font-black text-white text-center tracking-tight mb-2">MediaBase Pro</h1>
+             <h1 className="text-3xl font-black text-white text-center tracking-tight mb-2 uppercase italic">Auto Reels Media</h1>
              <p className="text-gray-400 text-center font-medium text-sm">
-               {authStatus === 'login' ? 'Welcome back! Please enter your details.' : 'Start your professional reels journey here.'}
+               {authStatus === 'login' ? 'Elevate your short-video distribution workflow.' : 'Join the mission to automate video marketing.'}
              </p>
            </div>
 
