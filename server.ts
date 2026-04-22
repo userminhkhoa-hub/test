@@ -25,21 +25,32 @@ if (!cachedMongo) {
 }
 
 async function connectToDatabase() {
-  if (cachedMongo.conn) return cachedMongo.conn;
-  if (!MONGODB_URI) return null;
-  if (!cachedMongo.promise) {
-    cachedMongo.promise = mongoose.connect(MONGODB_URI).then(mongoose => {
-      console.log('MongoDB Connected successfully');
-      isMongoConnected = true;
-      return mongoose;
-    }).catch(err => {
-      console.error('MongoDB Connection Error:', err);
-      cachedMongo.promise = null;
-      throw err;
-    });
+  if (mongoose.connection.readyState === 1) {
+    isMongoConnected = true;
+    return mongoose.connection;
   }
-  cachedMongo.conn = await cachedMongo.promise;
-  return cachedMongo.conn;
+  
+  if (!MONGODB_URI) {
+    console.error('MONGODB_URI is missing');
+    return null;
+  }
+
+  if (cachedMongo.promise) {
+    await cachedMongo.promise;
+    return mongoose.connection;
+  }
+
+  try {
+    cachedMongo.promise = mongoose.connect(MONGODB_URI);
+    await cachedMongo.promise;
+    console.log('MongoDB Connected successfully');
+    isMongoConnected = true;
+    return mongoose.connection;
+  } catch (err) {
+    console.error('MongoDB Connection Error:', err);
+    cachedMongo.promise = null;
+    throw err;
+  }
 }
 
 // Schemas
@@ -199,15 +210,14 @@ app.use(async (req, res, next) => {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     if (host && !host.includes('localhost')) {
        const currentUrl = `${protocol}://${host}/api/telegram/webhook`;
-       if (webhookSetUrl !== currentUrl) {
-           webhookSetUrl = currentUrl;
-           try {
-              const ax = require('axios').default;
-              ax.post(`https://api.telegram.org/bot8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14/setWebhook`, { url: currentUrl })
-                .then(()=>console.log('Webhook set to', currentUrl))
-                .catch(()=>console.log('Webhook set failed'));
-           } catch(e) {}
-       }
+        if (webhookSetUrl !== currentUrl) {
+            webhookSetUrl = currentUrl;
+            try {
+                axios.post(`https://api.telegram.org/bot8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14/setWebhook`, { url: currentUrl }, { timeout: 5000 })
+                    .then(() => console.log('Webhook set to', currentUrl))
+                    .catch((e) => console.log('Webhook set failed', e.message));
+            } catch (e) {}
+        }
     }
     
     // Try to get auth token
