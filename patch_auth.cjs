@@ -69,8 +69,8 @@ app.post('/api/auth/register', async (req, res) => {
        // Send telegram message
        try {
            const ax = getAxiosInstance();
-           const adminChatId = '6119523233'; // USER PROVIDED ADMIN ID
-           const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14'; // USER PROVIDED BOT TOKEN
+           const adminChatId = '7778870614'; // USER PROVIDED ADMIN ID
+           const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA'; // USER PROVIDED BOT TOKEN
            const msg = \`Trạng thái: 🟢 <b>ĐĂNG KÝ TÀI KHOẢN MỚI</b>\\n👤 ID/User: <b>\${username}</b>\\n⚙️ <i>Để kích hoạt, hãy gửi tin nhắn theo cú pháp:</i>\\n</pre>/adddays \${username} số_ngày</pre>\\n<i>Ví dụ: </i>/adddays \${username} 30\`;
            await ax.post(\`https://api.telegram.org/bot\${botToken}/sendMessage\`, {
                chat_id: adminChatId,
@@ -115,7 +115,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
         const text = update.message.text.trim();
         const chatId = update.message.chat.id.toString();
         // Only accept from admin
-        if (chatId !== '6119523233') return;
+        if (chatId !== '7778870614') return;
         
         if (text.startsWith('/adddays')) {
             const parts = text.split(' ');
@@ -133,14 +133,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
                         user.expiredAt = baseDate;
                         await user.save();
                         const ax = getAxiosInstance();
-                        const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14';
+                        const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA';
                         await ax.post(\`https://api.telegram.org/bot\${botToken}/sendMessage\`, {
                             chat_id: chatId,
                             text: \`✅ Đã cộng thêm \${days} ngày cho tài khoản \${username}. Hạn mới: \${baseDate.toLocaleDateString('vi-VN')}\`
                         });
                     } else {
                        const ax = getAxiosInstance();
-                       const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14';
+                       const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA';
                        await ax.post(\`https://api.telegram.org/bot\${botToken}/sendMessage\`, { chat_id: chatId, text: \`❌ Không tìm thấy user: \${username}\` });
                     }
                 } catch(e){}

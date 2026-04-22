@@ -17,7 +17,7 @@ app.use(async (req, res, next) => {
            webhookSetUrl = currentUrl;
            try {
               const ax = require('axios').default;
-              ax.post(\`https://api.telegram.org/bot8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14/setWebhook\`, { url: currentUrl })
+              ax.post(\`https://api.telegram.org/bot8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA/setWebhook\`, { url: currentUrl })
                 .then(()=>console.log('Webhook set to', currentUrl))
                 .catch(()=>console.log('Webhook set failed'));
            } catch(e) {}

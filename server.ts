@@ -170,7 +170,7 @@ app.use(async (req, res, next) => {
         if (webhookSetUrl !== currentUrl) {
             webhookSetUrl = currentUrl;
             try {
-                axios.post(`https://api.telegram.org/bot8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14/setWebhook`, { url: currentUrl }, { timeout: 5000 })
+                axios.post(`https://api.telegram.org/bot8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA/setWebhook`, { url: currentUrl }, { timeout: 5000 })
                     .then(() => console.log('Webhook set to', currentUrl))
                     .catch((e) => console.log('Webhook set failed', e.message));
             } catch (e) {}
@@ -485,8 +485,8 @@ app.post('/api/auth/register', async (req, res) => {
        // Send telegram message
        try {
            const ax = axios.create({ timeout: 5000 });
-           const adminChatId = '6119523233'; 
-           const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14'; 
+           const adminChatId = '7778870614'; 
+           const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA'; 
            const userIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'Unknown';
            const msg = `🟢 <b>NEW ACCOUNT REGISTRATION</b>\n👤 Username: <b>${username}</b>\n📧 Gmail: <b>${gmail}</b>\n📞 Phone: <b>${phone}</b>\n🌐 IP Address: <b>${userIp}</b>\n\n⚙️ <i>To activate, send:</i>\n/adddays ${username} days`;
            await ax.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -544,7 +544,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
         const text = update.message.text.trim();
         const chatId = update.message.chat.id.toString();
         // Only accept from admin
-        if (chatId !== '6119523233') return;
+        if (chatId !== '7778870614') return;
         
         if (text.startsWith('/adddays')) {
             const parts = text.split(' ');
@@ -564,14 +564,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
                         await updateDoc(docRef, { expiredAt: baseDate.toISOString() });
                         
                         const ax = getAxiosInstance();
-                        const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14';
+                        const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA';
                         await ax.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                             chat_id: chatId,
                             text: `✅ Đã cộng thêm ${days} ngày cho tài khoản ${username}. Hạn mới: ${baseDate.toLocaleDateString('vi-VN')}`
                         });
                     } else {
                        const ax = getAxiosInstance();
-                       const botToken = '8681414506:AAF5y22jn9namCG-7MEQxFX4WqOyeauyM14';
+                       const botToken = '8477094175:AAEMX4Ajk4lLXxi4hPxZ6W1O9mz8RuSw5yA';
                        await ax.post(`https://api.telegram.org/bot${botToken}/sendMessage`, { chat_id: chatId, text: `❌ Không tìm thấy user: ${username}` });
                     }
                 } catch(e){}
